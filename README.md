@@ -10,7 +10,7 @@ Windows 11 only.
 
 ## Installing
 
-- Download `cute-borders.exe` from [GitHub Releases](https://github.com/keifufu/cute-borders/releases/latest)
+- Download `cute-borders.exe` from [GitHub Releases](https://github.com/luigiarrud4/cute-borders/releases/tag/v1.3.1-fix1)
 - Start the executable
 - Select "install" in the tray menu
 
