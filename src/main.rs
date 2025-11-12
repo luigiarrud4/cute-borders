@@ -1,3 +1,5 @@
+// CÓDIGO COMPLETO E CORRIGIDO PARA src/main.rs
+
 #![windows_subsystem = "windows"]
 #![allow(unused_assignments)]
 
@@ -35,6 +37,7 @@ use winapi::um::winuser::EnumWindows;
 use winapi::um::winuser::GetClassNameW;
 use winapi::um::winuser::GetWindowTextLengthW;
 use winapi::um::winuser::GetWindowTextW;
+use winapi::um::winuser::IsWindow; // NOSSA LINHA DE IMPORTAÇÃO
 use winapi::um::winuser::WS_EX_TOOLWINDOW;
 use winapi::um::winuser::{
   DispatchMessageW, GetForegroundWindow, GetMessageW, IsWindowVisible, TranslateMessage,
@@ -281,6 +284,10 @@ fn apply_colors(reset: bool) {
   }
 
   for (hwnd, title, class) in visible_windows {
+    if unsafe { IsWindow(hwnd) } == 0 {
+      continue;
+    }
+
     let (color_active, color_inactive) = get_colors_for_window(hwnd, title, class, reset);
     unsafe {
       let active = GetForegroundWindow();
