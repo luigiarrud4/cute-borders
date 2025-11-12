@@ -1,11 +1,12 @@
 // Conteúdo COMPLETO e FINAL para src/config.rs
 use crate::logger::Logger;
+use crate::util::get_file_path; // <--- GARANTA QUE ESTA LINHA ESTEJA AQUI
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex; // Removido MutexGuard
+use std::sync::Mutex;
 use std::time::SystemTime;
 
 struct ConfigState {
@@ -61,10 +62,10 @@ impl Config {
     }
 
     pub fn write_config(config_to_write: &Config) -> Result<(), Box<dyn std::error::Error>> {
-        let yaml_string = serde_yaml::to_string(config_to_write)?;
         let config_path = get_file_path("config.yaml");
+        let yaml_string = serde_yaml::to_string(config_to_write)?;
         fs::write(config_path, yaml_string)?;
-        // Agora, atualizamos o estado interno
+        
         let mut state_guard = CONFIG.lock().unwrap();
         state_guard.config = config_to_write.clone();
         state_guard.last_modified = Some(SystemTime::now());
@@ -72,7 +73,6 @@ impl Config {
     }
 }
 
-// O resto do arquivo permanece o mesmo
 fn load_or_create_config() -> ConfigState {
     let config_path = get_file_path("config.yaml");
     let config_to_return = if let Ok(config_str) = fs::read_to_string(&config_path) {
@@ -113,9 +113,4 @@ fn create_default_config() -> Config {
     }
 }
 
-fn get_file_path(filename: &str) -> PathBuf {
-    let mut path = std::env::current_exe().unwrap_or_default();
-    path.pop();
-    path.push(filename);
-    path
-}
+// A função get_file_path que estava aqui foi removida!
