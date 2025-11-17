@@ -42,7 +42,6 @@ const DWMWA_COLOR_DEFAULT: u32 = 0xFFFFFFFF;
 const DWMWA_COLOR_NONE: u32 = 0xFFFFFFFE;
 const COLOR_INVALID: u32 = 0x000000FF;
 
-// --- NOVO HELPER ---
 // Função auxiliar para verificar se o modo Rainbow está ativo na configuração global.
 fn is_rainbow_active(config: &Config) -> bool {
     config.window_rules.iter().any(|r| {
@@ -61,7 +60,7 @@ fn main() {
         Logger::log(&format!("[ERROR] Failed to create or update startup task: {:?}", err));
     }
 
-    // --- LOOP DE ATUALIZAÇÃO REFORMULADO ---
+    // --- LOOP DE ATUALIZAÇÃO EFICIENTE ---
     std::thread::spawn(|| {
         let mut last_active_window: HWND = ptr::null_mut();
 
@@ -69,21 +68,17 @@ fn main() {
             let config = Config::get();
             let rainbow_is_on = is_rainbow_active(&config);
 
-            // 1. O 'tick' do Rainbow é chamado sempre para que a cor continue a transição.
             if rainbow_is_on {
                 Rainbow::tick(config.rainbow_speed.unwrap_or(1.0));
             }
 
             let current_active_window = unsafe { GetForegroundWindow() };
 
-            // 2. As cores só são aplicadas se a janela ativa mudou OU se o rainbow está ligado.
             if current_active_window != last_active_window || rainbow_is_on {
                 apply_colors(false);
                 last_active_window = current_active_window;
             }
             
-            // Dormimos por um período curto para manter a responsividade e o efeito rainbow suave.
-            // Este loop agora é muito mais leve.
             std::thread::sleep(Duration::from_millis(33)); // ~30 FPS para o rainbow
         }
     });
@@ -163,7 +158,6 @@ fn main() {
     }
 }
 
-
 unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
   if IsWindowVisible(hwnd) != 0 {
     let mut title_buffer: [u16; 512] = [0; 512];
@@ -227,20 +221,34 @@ fn get_colors_for_window(_hwnd: HWND, title: String, class: String, reset: bool)
 }
 
 fn apply_colors(reset: bool) {
-  let mut visible_windows: Vec<(HWND, String, String)> = Vec::new();
-  unsafe { EnumWindows(Some(enum_windows_callback), &mut visible_windows as *mut _ as LPARAM); }
-  let active_hwnd = unsafe { GetForegroundWindow() };
-
-  for (hwnd, title, class) in visible_windows {
-    if unsafe { IsWindow(hwnd) } == 0 { continue; }
-    let (color_active, color_inactive) = get_colors_for_window(hwnd, title, class, reset);
+    let mut visible_windows: Vec<(HWND, String, String)> = Vec::new();
+    let lparam = &mut visible_windows as *mut _ as LPARAM;
+    unsafe { EnumWindows(Some(enum_windows_callback), lparam) };
     
-    let color_to_apply = if active_hwnd == hwnd { color_active } else { color_inactive };
+    let active_hwnd = unsafe { GetForegroundWindow() };
 
-    if color_to_apply != COLOR_INVALID {
-        unsafe {
-            DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &color_to_apply as *const _ as *const c_void, std::mem::size_of::<c_ulong>() as u32);
+    for (hwnd, title, class) in visible_windows {
+        // --- CORREÇÃO DE ESTABILIDADE CRÍTICA ---
+        // Antes de fazer qualquer coisa com o 'hwnd', verificamos se ele ainda é um handle de janela válido.
+        // Se a janela foi fechada desde que `EnumWindows` foi chamado, `IsWindow` retornará 0 e pularemos para a próxima,
+        // evitando assim a violação de acesso (crash 0xc0000005).
+        if unsafe { IsWindow(hwnd) } == 0 {
+            continue;
+        }
+
+        let (color_active, color_inactive) = get_colors_for_window(hwnd, title, class, reset);
+        
+        let color_to_apply = if active_hwnd == hwnd { color_active } else { color_inactive };
+
+        if color_to_apply != COLOR_INVALID {
+            unsafe {
+                DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_BORDER_COLOR,
+                    &color_to_apply as *const _ as *const c_void,
+                    std::mem::size_of::<c_ulong>() as u32,
+                );
+            }
         }
     }
-  }
 }
