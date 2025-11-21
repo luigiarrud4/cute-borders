@@ -39,6 +39,7 @@ use util::{get_exe_path, hex_to_colorref, set_startup};
 
 const DWMWA_BORDER_COLOR: u32 = 34;
 const DWMWA_COLOR_DEFAULT: u32 = 0xFFFFFFFF;
+#[allow(dead_code)]
 const DWMWA_COLOR_NONE: u32 = 0xFFFFFFFE;
 const COLOR_INVALID: u32 = 0x000000FF;
 
@@ -159,20 +160,26 @@ fn main() {
 }
 
 unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-  if IsWindowVisible(hwnd) != 0 {
-    let mut title_buffer: [u16; 512] = [0; 512];
-    let text_length = GetWindowTextLengthW(hwnd) + 1;
-    if text_length > 0 { GetWindowTextW(hwnd, title_buffer.as_mut_ptr(), text_length as c_int); }
-    let title = OsString::from_wide(&title_buffer).to_string_lossy().into_owned();
-    let ex_style = winapi::um::winuser::GetWindowLongW(hwnd, GWL_EXSTYLE) as c_int;
-    let mut class_buffer: [u16; 256] = [0; 256];
-    let class_result = GetClassNameW(hwnd, class_buffer.as_mut_ptr(), class_buffer.len() as c_int);
-    let mut class_name = String::new();
-    if class_result > 0 { class_name = OsString::from_wide(&class_buffer).to_string_lossy().into_owned(); }
-    if ex_style & (WS_EX_TOOLWINDOW as i32) == 0 {
-      let visible_windows: &mut Vec<(HWND, String, String)> = &mut *(lparam as *mut Vec<(HWND, String, String)>);
-      visible_windows.push((hwnd, title, class_name));
-    }
+  // Verificação extra de sanidade antes de processar
+  if IsWindow(hwnd) == 0 || IsWindowVisible(hwnd) == 0 {
+      return 1;
+  }
+
+  let mut title_buffer: [u16; 512] = [0; 512];
+  let text_length = GetWindowTextLengthW(hwnd) + 1;
+  if text_length > 0 { GetWindowTextW(hwnd, title_buffer.as_mut_ptr(), text_length as c_int); }
+  let title = OsString::from_wide(&title_buffer).to_string_lossy().into_owned();
+  
+  let ex_style = winapi::um::winuser::GetWindowLongW(hwnd, GWL_EXSTYLE) as c_int;
+  
+  let mut class_buffer: [u16; 256] = [0; 256];
+  let class_result = GetClassNameW(hwnd, class_buffer.as_mut_ptr(), class_buffer.len() as c_int);
+  let mut class_name = String::new();
+  if class_result > 0 { class_name = OsString::from_wide(&class_buffer).to_string_lossy().into_owned(); }
+  
+  if ex_style & (WS_EX_TOOLWINDOW as i32) == 0 {
+    let visible_windows: &mut Vec<(HWND, String, String)> = &mut *(lparam as *mut Vec<(HWND, String, String)>);
+    visible_windows.push((hwnd, title, class_name));
   }
   1
 }
@@ -190,7 +197,6 @@ fn get_colors_for_window(_hwnd: HWND, title: String, class: String, reset: bool)
             if let Some(contains_str) = &rule.contains {
                 title.to_lowercase().contains(&contains_str.to_lowercase())
             } else {
-                Logger::log("Expected `contains` on `Match=\"Title\"`");
                 false
             }
         }
@@ -198,7 +204,6 @@ fn get_colors_for_window(_hwnd: HWND, title: String, class: String, reset: bool)
             if let Some(contains_str) = &rule.contains {
                 class.to_lowercase().contains(&contains_str.to_lowercase())
             } else {
-                Logger::log("Expected `contains` on `Match=\"Class\"`");
                 false
             }
         }
@@ -228,26 +233,35 @@ fn apply_colors(reset: bool) {
     let active_hwnd = unsafe { GetForegroundWindow() };
 
     for (hwnd, title, class) in visible_windows {
-        // --- CORREÇÃO DE ESTABILIDADE CRÍTICA ---
-        // Antes de fazer qualquer coisa com o 'hwnd', verificamos se ele ainda é um handle de janela válido.
-        // Se a janela foi fechada desde que `EnumWindows` foi chamado, `IsWindow` retornará 0 e pularemos para a próxima,
-        // evitando assim a violação de acesso (crash 0xc0000005).
+        // --- CORREÇÃO CRÍTICA DE CRASH ---
+        // Verifica se o HWND ainda é válido antes de qualquer operação.
+        // Janelas podem ser fechadas entre o EnumWindows e este loop.
         if unsafe { IsWindow(hwnd) } == 0 {
             continue;
         }
 
-        let (color_active, color_inactive) = get_colors_for_window(hwnd, title, class, reset);
+        let (color_active, color_inactive) = get_colors_for_window(hwnd, title.clone(), class, reset);
         
         let color_to_apply = if active_hwnd == hwnd { color_active } else { color_inactive };
 
         if color_to_apply != COLOR_INVALID {
             unsafe {
-                DwmSetWindowAttribute(
+                let result = DwmSetWindowAttribute(
                     hwnd,
                     DWMWA_BORDER_COLOR,
                     &color_to_apply as *const _ as *const c_void,
                     std::mem::size_of::<c_ulong>() as u32,
                 );
+
+                // Tratamento de erro silencioso:
+                // 0x80070006 é E_HANDLE (Invalid Handle).
+                // Ignoramos para não crashar e não spammar o log.
+                if result != 0 {
+                    let result_u32 = result as u32;
+                    if result_u32 != 0x80070006 {
+                        // Erros reais podem ser logados aqui se necessário
+                    }
+                }
             }
         }
     }
