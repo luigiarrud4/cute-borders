@@ -1,10 +1,12 @@
+// src/gui.rs
+
 use eframe::egui;
 use crate::config::{Config, Rule, RuleMatch};
 use crate::logger::Logger;
 
 struct ConfigApp {
     is_rainbow_active: bool,
-    is_inactive_disabled: bool, // <- Novo estado para o checkbox
+    is_inactive_disabled: bool,
     active_color_hex: String,
     inactive_color_hex: String,
     active_color_picker: egui::Color32,
@@ -18,24 +20,21 @@ impl ConfigApp {
     }
 
     fn color32_to_hex(color: egui::Color32) -> String {
-        format!("#{:02X}{:02X}{:02X}", color.r(), color.g(), color.b())
+        format!("#{:02x}{:02x}{:02x}", color.r(), color.g(), color.b())
     }
 
     fn load_from_config() -> Self {
         let config = Config::read_for_gui();
-        let mut active_hex = "#FFFFFF".to_string();
+        let mut active_hex = "#c6a0f6".to_string();
         let mut inactive_hex = "#444444".to_string();
         let mut is_rainbow = false;
         let mut is_inactive_disabled = false;
 
         if let Some(global_rule) = config.window_rules.iter().find(|r| r.rule_match == RuleMatch::Global) {
-            // Lógica da Cor Inativa
             is_inactive_disabled = global_rule.inactive_border_color.is_empty();
             if !is_inactive_disabled {
                 inactive_hex = global_rule.inactive_border_color.clone();
             }
-
-            // Lógica da Cor Ativa
             is_rainbow = global_rule.active_border_color.to_lowercase() == "rainbow";
             if !is_rainbow {
                 active_hex = global_rule.active_border_color.clone();
@@ -58,24 +57,22 @@ impl ConfigApp {
         config.rainbow_speed = Some(self.rainbow_speed);
 
         let active_color = if self.is_rainbow_active { "rainbow".to_string() } else { self.active_color_hex.clone() };
-        
-        // Se o checkbox estiver marcado, salve uma string vazia. Senão, salve a cor.
         let inactive_color = if self.is_inactive_disabled { "".to_string() } else { self.inactive_color_hex.clone() };
 
         if let Some(global_rule) = config.window_rules.iter_mut().find(|r| r.rule_match == RuleMatch::Global) {
             global_rule.active_border_color = active_color;
             global_rule.inactive_border_color = inactive_color;
         } else {
-            config.window_rules.push(Rule {
+            config.window_rules.insert(0, Rule {
                 rule_match: RuleMatch::Global, contains: None,
                 active_border_color: active_color,
                 inactive_border_color: inactive_color,
             });
         }
         if let Err(e) = Config::write_config(&config) {
-            Logger::log(&format!("[GUI ERROR] Failed to write config: {:?}", e));
+            Logger::log(&format!("[GUI ERROR] Falha ao salvar configuração: {:?}", e));
         } else {
-            Logger::log("[GUI] Config saved successfully.");
+            Logger::log("[GUI] Configuração salva com sucesso.");
         }
     }
 }
@@ -91,7 +88,6 @@ impl eframe::App for ConfigApp {
                 .num_columns(2)
                 .spacing([40.0, 8.0])
                 .show(ui, |ui| {
-                    
                     ui.label("Cor da Borda Ativa:");
                     ui.add_enabled_ui(!self.is_rainbow_active, |ui| {
                         ui.horizontal(|ui| {
@@ -114,7 +110,6 @@ impl eframe::App for ConfigApp {
                     }
                     
                     ui.label("Cor da Borda Inativa:");
-                    // Os controles de cor inativa agora ficam desabilitados se o checkbox estiver marcado
                     ui.add_enabled_ui(!self.is_inactive_disabled, |ui| {
                         ui.horizontal(|ui| {
                             let color_picker_response = ui.color_edit_button_srgba(&mut self.inactive_color_picker);
@@ -125,8 +120,7 @@ impl eframe::App for ConfigApp {
                     });
                     ui.end_row();
 
-                    // --- CHECKBOX ADICIONADO AQUI ---
-                    ui.label(""); // Célula vazia para alinhamento
+                    ui.label("");
                     ui.checkbox(&mut self.is_inactive_disabled, "Desativar borda inativa");
                     ui.end_row();
             });
@@ -144,12 +138,13 @@ impl eframe::App for ConfigApp {
             });
 
             ui.add_space(10.0);
-            ui.label("Nota: As mudanças são aplicadas automaticamente ao salvar!");
+            ui.label("Nota: Mudanças são aplicadas automaticamente ao salvar!");
         });
     }
 }
 
 pub fn run_gui() {
+    // [CORREÇÃO] Tamanho da janela ajustado para a interface simples.
     let viewport = egui::ViewportBuilder::default().with_inner_size([675.0, 617.0]);
     let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native("Configurações", options, Box::new(|_cc| Box::new(ConfigApp::load_from_config()))).ok();
