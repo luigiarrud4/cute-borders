@@ -1,11 +1,11 @@
-// Conteúdo COMPLETO e FINAL para src/config.rs
+// src/config.rs
+
 use crate::logger::Logger;
-use crate::util::get_file_path; // <--- GARANTA QUE ESTA LINHA ESTEJA AQUI
+use crate::util::get_file_path;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use std::fs;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -112,5 +112,3 @@ fn create_default_config() -> Config {
         }],
     }
 }
-
-// A função get_file_path que estava aqui foi removida!
